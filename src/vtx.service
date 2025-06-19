@@ -1,0 +1,19 @@
+[Unit]
+Description=VTX Signaling Service
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/vtx.env
+ExecStart=/opt/vtx/vtx
+WorkingDirectory=/opt/vtx
+Restart=always
+RestartSec=10
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

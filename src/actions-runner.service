@@ -1,0 +1,21 @@
+[Unit]
+Description=GitHub Actions Runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/home/__USER__/actions-runner/run.sh
+User=__USER__
+WorkingDirectory=/home/__USER__/actions-runner
+
+Environment="RUNNER_ALLOW_RUNASROOT=0"
+
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=5min
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
