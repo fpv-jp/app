@@ -20,7 +20,7 @@ sudo systemctl restart NetworkManager
 nmcli device status
 
 # ======================================================================
-# P2P-GO mode (Ground Station)
+# P2P-GO mode
 # ======================================================================
 
 # 地上局用のwpa_supplicant設定を作成
@@ -98,7 +98,7 @@ iw dev $(basename /sys/class/net/p2p-wlo1-*) station dump
 sudo wpa_cli -i wlo1 p2p_peer da:3a:dd:09:24:2a
 
 # ======================================================================
-# AP (Ground Station)
+# AP mode
 # ======================================================================
 
 # 1. hostapd.service (AP起動)

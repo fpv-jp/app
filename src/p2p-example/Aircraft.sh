@@ -7,8 +7,6 @@ sudo systemctl stop wpa_supplicant.service
 sudo systemctl mask wpa_supplicant.service
 
 # WifiデバイスをNetworkManagerの管理下から除外
-echo "" | sudo tee /etc/NetworkManager/conf.d/unmanaged.conf
-# WifiデバイスをNetworkManagerの管理下から除外
 sudo tee /etc/NetworkManager/conf.d/unmanaged.conf >/dev/null <<'EOF'
 [keyfile]
 unmanaged-devices=interface-name:wlan*;interface-name:p2p-*
@@ -20,7 +18,7 @@ nmcli device status
 
 
 # ======================================================================
-# P2P-Client mode (Aircraft)
+# P2P-Client mode
 # ======================================================================
 
 # ドローン用のwpa_supplicant設定を作成
@@ -99,7 +97,7 @@ sudo wpa_cli -i wlan0 p2p_peer bc:09:1b:1d:15:92
 
 
 # ======================================================================
-# managed mode (Aircraft)
+# managed mode
 # ======================================================================
 
 # 1. wpa_supplicant設定
@@ -124,3 +122,5 @@ ip addr show wlan2
 
 wpa_cli -i wlan2 status
 wpa_cli -i wlan2 signal_poll
+
+sudo journalctl -u wpa_supplicant@wlan2 -f
