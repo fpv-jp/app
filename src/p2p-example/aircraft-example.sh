@@ -95,6 +95,10 @@ ip addr show $(ls /sys/class/net/ | grep ^p2p-wlan0-)
 iw dev $(basename /sys/class/net/p2p-wlan0-*) station dump
 sudo wpa_cli -i wlan0 p2p_peer bc:09:1b:1d:15:92
 
+ls -la /var/run/wpa_supplicant/
+srwxrwx---  1 root netdev p2p-dev-wlan0
+srwxrwx---  1 root netdev p2p-wlan0-0
+srwxrwx---  1 root netdev wlan0
 
 # ======================================================================
 # managed mode
