@@ -119,8 +119,11 @@ sudo systemctl edit wpa_supplicant@wlan2
 ```
 [Service]
 ExecStartPost=/bin/sleep 2
-ExecStartPost=/usr/sbin/ip addr add 192.168.50.2/24 dev wlan2
+ExecStartPost=/usr/sbin/ip addr replace 192.168.50.2/24 dev wlan2
 ```
+
+sudo systemctl daemon-reload
+sudo systemctl start wpa_supplicant@wlan2
 
 ip addr show wlan2
 
