@@ -1,4 +1,5 @@
 ```
+iw list
 iw dev
 iw phy phy1 info
 sudo iw dev wlan2 scan

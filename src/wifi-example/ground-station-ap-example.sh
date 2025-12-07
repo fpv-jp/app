@@ -26,13 +26,13 @@ nmcli device status
 # 1. hostapd.service (AP起動)
 # ======================================================================
 
-sudo apt install hostapd
+sudo apt install hostapd -y
 sudo systemctl unmask hostapd.service
 
 # 例: SSID AP-GroundStation / Password AP-GroundStation
 
 sudo tee /etc/hostapd/hostapd.conf >/dev/null <<'EOF'
-interface=wlx90de8017a5c9
+interface=wlP2p33s0
 driver=nl80211
 ssid=AP-GroundStation
 hw_mode=g
@@ -56,7 +56,7 @@ sudo systemctl edit hostapd.service
 ```
 [Service]
 ExecStartPost=/bin/sleep 2
-ExecStartPost=/usr/sbin/ip addr replace 192.168.50.1/24 dev wlx90de8017a5c9
+ExecStartPost=/usr/sbin/ip addr replace 192.168.50.1/24 dev wlP2p33s0
 Environment=DAEMON_OPTS=
 
 [Unit]
@@ -68,12 +68,12 @@ sudo systemctl cat hostapd.service
 # 2. dnsmasq.service (DHCP起動)
 # ======================================================================
 
-sudo apt install dnsmasq
+sudo apt install dnsmasq -y
 sudo systemctl unmask dnsmasq.service 
 
 # port=0 DNSは提供しない（systemd-resolvedに任せる）
 sudo tee /etc/dnsmasq.conf >/dev/null <<'EOF'
-interface=wlx90de8017a5c9
+interface=wlP2p33s0
 bind-interfaces
 dhcp-range=192.168.50.10,192.168.50.50,255.255.255.0,24h
 port=0

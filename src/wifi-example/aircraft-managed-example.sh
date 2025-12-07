@@ -21,40 +21,40 @@ nmcli device status
 # ======================================================================
 
 # 1. wpa_supplicant設定
-sudo tee /etc/wpa_supplicant/wpa_supplicant-wlan2.conf >/dev/null <<'EOF'
+sudo tee /etc/wpa_supplicant/wpa_supplicant-wlan1.conf >/dev/null <<'EOF'
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
 EOF
 # SSID/Passを追記する
-wpa_passphrase "AP-GroundStation" "AP-GroundStation" | sudo tee -a /etc/wpa_supplicant/wpa_supplicant-wlan2.conf
+wpa_passphrase "AP-GroundStation" "AP-GroundStation" | sudo tee -a /etc/wpa_supplicant/wpa_supplicant-wlan1.conf
 
 # サービスを作成
-sudo systemctl enable wpa_supplicant@wlan2
+sudo systemctl enable wpa_supplicant@wlan1
 # サービス起動時にIPを追加するようにoverride
-sudo systemctl edit wpa_supplicant@wlan2
+sudo systemctl edit wpa_supplicant@wlan1
 ```
 [Service]
 ExecStartPost=/bin/sleep 2
-ExecStartPost=/usr/sbin/ip addr replace 192.168.50.2/24 dev wlan2
+ExecStartPost=/usr/sbin/ip addr replace 192.168.50.2/24 dev wlan1
 ```
 # サービスを確認
-sudo systemctl cat wpa_supplicant@wlan2
+sudo systemctl cat wpa_supplicant@wlan1
 
 # ======================================================================
 
 # サービスを更新して再起動
 sudo systemctl daemon-reload
-sudo systemctl restart wpa_supplicant@wlan2
+sudo systemctl restart wpa_supplicant@wlan1
 
 # 疎通確認
 ping 192.168.50.1
 
 # ======================================================================
 
-sudo systemctl status wpa_supplicant@wlan0
+sudo systemctl status wpa_supplicant@wlan1
 
-sudo journalctl -u wpa_supplicant@wlan2 -f
+sudo journalctl -u wpa_supplicant@wlan1 -f
 
-ip addr show wlan2
-wpa_cli -i wlan2 status
-wpa_cli -i wlan2 signal_poll
+ip addr show wlan1
+wpa_cli -i wlan1 status
+wpa_cli -i wlan1 signal_poll
