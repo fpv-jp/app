@@ -1,8 +1,13 @@
+sudo visudo
+
+rock ALL=(ALL) NOPASSWD:ALL
+radxa ALL=(ALL) NOPASSWD:ALL
+
 wget https://raw.githubusercontent.com/fpv-jp/app/refs/heads/main/certificate/server-ca-cert.pem
 sudo cp server-ca-cert.pem /usr/local/share/ca-certificates/my-custom-ca.crt
 sudo update-ca-certificates
 
-sudo apt update && sudo apt install xfce4
+sudo apt update 
 sudo apt purge '^kde' '^plasma' '^khotkeys' '^kwayland' '^kwin' '^kio' '^kmail' '^akonadi' '^libkf' '^kded' '^kdepim' -y
 sudo apt autoremove --purge -y
 
