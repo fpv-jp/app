@@ -23,14 +23,14 @@ nmcli device status
 # AP mode
 # ======================================================================
 
-sudo tee /etc/wpa_supplicant/wpa_supplicant-wlP2p33s0.conf >/dev/null <<'EOF'
-ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
-update_config=1
-EOF
+# sudo tee /etc/wpa_supplicant/wpa_supplicant-wlP2p33s0.conf >/dev/null <<'EOF'
+# ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+# update_config=1
+# EOF
 
-sudo systemctl enable wpa_supplicant@wlP2p33s0
-sudo systemctl restart wpa_supplicant@wlP2p33s0
-sudo systemctl status wpa_supplicant@wlP2p33s0
+# sudo systemctl enable wpa_supplicant@wlP2p33s0
+# sudo systemctl restart wpa_supplicant@wlP2p33s0
+# sudo systemctl status wpa_supplicant@wlP2p33s0
 
 # 1. hostapd.service (AP起動)
 # ======================================================================
@@ -109,7 +109,10 @@ sudo journalctl -u dnsmasq -f
 sudo journalctl -xeu hostapd.service
 sudo journalctl -xeu dnsmasq.service
 
-
 sudo systemctl status wpa_supplicant@wlP2p33s0
 
 sudo journalctl -u wpa_supplicant@wlP2p33s0 -f
+
+ip addr show wlP2p33s0
+wpa_cli -i wlP2p33s0 status
+wpa_cli -i wlP2p33s0 signal_poll

@@ -29,3 +29,13 @@ sudo systemctl restart xrdp
 cat ~/.xorgxrdp.*.log
 cat ~/.xsession-errors
 journalctl -u xrdp -n 50
+
+# -----------------------------------------------
+
+echo lxsession -s LXDE -e LXDE > ~/.xsession
+chmod +x ~/.xsession
+
+sudo vim /etc/xrdp/startwm.sh
+# test -x /etc/X11/Xsession && exec /etc/X11/Xsession
+# exec /bin/sh /etc/X11/Xsession
+lxsession -s LXDE -e LXDE
