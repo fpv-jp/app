@@ -28,6 +28,16 @@ EOF
 # SSID/Passを追記する
 wpa_passphrase "AP-GroundStation" "AP-GroundStation" | sudo tee -a /etc/wpa_supplicant/wpa_supplicant-wlan1.conf
 
+# 1-2. パスワードを使わない wpa_supplicant設定
+sudo tee /etc/wpa_supplicant/wpa_supplicant-wlan1.conf >/dev/null <<'EOF'
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+network={
+    ssid="AP-GroundStation"
+    key_mgmt=NONE
+}
+EOF
+
 # サービスを作成
 sudo systemctl enable wpa_supplicant@wlan1
 # サービス起動時にIPを追加するようにoverride

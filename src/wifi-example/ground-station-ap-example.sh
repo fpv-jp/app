@@ -23,14 +23,14 @@ nmcli device status
 # AP mode
 # ======================================================================
 
-# sudo tee /etc/wpa_supplicant/wpa_supplicant-wlP2p33s0.conf >/dev/null <<'EOF'
+# sudo tee /etc/wpa_supplicant/wpa_supplicant-wlan0.conf >/dev/null <<'EOF'
 # ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 # update_config=1
 # EOF
 
-# sudo systemctl enable wpa_supplicant@wlP2p33s0
-# sudo systemctl restart wpa_supplicant@wlP2p33s0
-# sudo systemctl status wpa_supplicant@wlP2p33s0
+# sudo systemctl enable wpa_supplicant@wlan0
+# sudo systemctl restart wpa_supplicant@wlan0
+# sudo systemctl status wpa_supplicant@wlan0
 
 # 1. hostapd.service (AP起動)
 # ======================================================================
@@ -39,7 +39,6 @@ sudo apt install hostapd -y
 sudo systemctl unmask hostapd.service
 
 # 例: SSID AP-GroundStation / Password AP-GroundStation
-
 sudo tee /etc/hostapd/hostapd.conf >/dev/null <<'EOF'
 interface=wlP2p33s0
 driver=nl80211
@@ -57,6 +56,21 @@ wpa_pairwise=TKIP
 rsn_pairwise=CCMP
 EOF
 
+# パスワード/暗号を使わない場合
+sudo tee /etc/hostapd/hostapd.conf >/dev/null <<'EOF'
+interface=wlan0
+driver=nl80211
+ssid=AP-GroundStation
+country_code=JP
+hw_mode=g
+channel=6
+ieee80211n=1
+wmm_enabled=1
+auth_algs=1
+ignore_broadcast_ssid=0
+wpa=0
+EOF
+
 # hostapd設定の参照パスを更新
 sudo sed -i 's/^#DAEMON_CONF=.*/DAEMON_CONF="\/etc\/hostapd\/hostapd.conf"/' /etc/default/hostapd
 
@@ -65,7 +79,7 @@ sudo systemctl edit hostapd.service
 ```
 [Service]
 ExecStartPost=/bin/sleep 2
-ExecStartPost=/usr/sbin/ip addr replace 192.168.50.1/24 dev wlP2p33s0
+ExecStartPost=/usr/sbin/ip addr replace 192.168.50.1/24 dev wlan0
 Environment=DAEMON_OPTS=
 
 [Unit]
@@ -82,7 +96,7 @@ sudo systemctl unmask dnsmasq.service
 
 # port=0 DNSは提供しない（systemd-resolvedに任せる）
 sudo tee /etc/dnsmasq.conf >/dev/null <<'EOF'
-interface=wlP2p33s0
+interface=wlan0
 bind-interfaces
 dhcp-range=192.168.50.2,192.168.50.16,255.255.255.0,24h
 port=0
@@ -109,10 +123,10 @@ sudo journalctl -u dnsmasq -f
 sudo journalctl -xeu hostapd.service
 sudo journalctl -xeu dnsmasq.service
 
-sudo systemctl status wpa_supplicant@wlP2p33s0
+sudo systemctl status wpa_supplicant@wlan0
 
-sudo journalctl -u wpa_supplicant@wlP2p33s0 -f
+sudo journalctl -u wpa_supplicant@wlan0 -f
 
-ip addr show wlP2p33s0
-wpa_cli -i wlP2p33s0 status
-wpa_cli -i wlP2p33s0 signal_poll
+ip addr show wlan0
+wpa_cli -i wlan0 status
+wpa_cli -i wlan0 signal_poll
