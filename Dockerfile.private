@@ -1,0 +1,49 @@
+# ---------- Planner stage ----------
+FROM rust:slim AS chef
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+RUN cargo install cargo-chef
+RUN apt-get update && apt-get install -y musl-tools && rm -rf /var/lib/apt/lists/*
+
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+      "amd64") RUST_TARGET="x86_64-unknown-linux-musl" ;; \
+      "arm64") RUST_TARGET="aarch64-unknown-linux-musl" ;; \
+    esac && \
+    echo "$RUST_TARGET" > /rust-target.txt && \
+    rustup target add "$RUST_TARGET"
+
+WORKDIR /build
+
+# ---------- Prepare recipe (dependency plan) ----------
+FROM chef AS planner
+COPY Cargo.toml Cargo.lock ./
+COPY src/ src/
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ---------- Cache dependencies ----------
+FROM chef AS builder
+COPY --from=planner /build/recipe.json recipe.json
+RUN RUST_TARGET=$(cat /rust-target.txt) && \
+    cargo chef cook --release --target "$RUST_TARGET" --recipe-path recipe.json
+
+# ---------- Build application ----------
+COPY Cargo.toml Cargo.lock ./
+COPY src/ src/
+RUN RUST_TARGET=$(cat /rust-target.txt) && \
+    cargo build --release --target "$RUST_TARGET" && \
+    cp "target/$RUST_TARGET/release/fpvjp-app" /fpvjp-app
+
+# ---------- Runtime stage (distroless static) ----------
+FROM gcr.io/distroless/static-debian13
+
+WORKDIR /app
+
+COPY --from=builder --chown=nonroot:nonroot /fpvjp-app /app/fpvjp-app
+COPY --chown=nonroot:nonroot vrx/private ./vrx
+COPY --chown=nonroot:nonroot certificate/ ./certificate/
+
+USER nonroot:nonroot
+
+EXPOSE 443
+ENTRYPOINT ["/app/fpvjp-app"]
+CMD ["--port", "443", "--cert", "certificate/server-cert.pem", "--key", "certificate/server-key.pem", "--debug", "--keep-alive"]

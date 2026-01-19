@@ -1,0 +1,193 @@
+name: Build and Push Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      vrx_release_tag:
+        description: 'VRX Release tag (e.g., release-20251103-012538)'
+        required: true
+        default: 'latest'
+        type: string
+
+env:
+  PROJECT_ID: fpv-japan
+  GAR_LOCATION: asia-northeast1
+  REPOSITORY: fpvjp
+  IMAGE: app
+  VRX_REPO: fpv-jp/vrx
+
+jobs:
+  build-and-push-public:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker to use gcloud as credential helper
+        run: |
+          gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev
+
+      - name: Determine VRX release tag
+        id: vrx_release
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ "${{ inputs.vrx_release_tag }}" = "latest" ]; then
+              TAG=$(gh release list --repo ${{ env.VRX_REPO }} --limit 1 --json tagName --jq '.[0].tagName')
+            else
+              TAG="${{ inputs.vrx_release_tag }}"
+            fi
+          else
+            TAG=$(gh release list --repo ${{ env.VRX_REPO }} --limit 1 --json tagName --jq '.[0].tagName')
+          fi
+          if [ -z "$TAG" ]; then
+            echo "Failed to determine VRX release tag" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
+
+      - name: Download VRX release from GitHub
+        run: |
+          mkdir -p vrx
+          gh release download ${{ steps.vrx_release.outputs.tag }} \
+            --repo ${{ env.VRX_REPO }} \
+            --pattern "dist.tar.gz" \
+            --output dist.tar.gz
+          tar -xzf dist.tar.gz -C vrx
+          rm dist.tar.gz
+        env:
+          GH_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
+
+      - name: Build and push public image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.public
+          push: true
+          cache-from: type=gha,scope=public
+          cache-to: type=gha,mode=max,scope=public
+          tags: |
+            ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:latest
+
+  build-private:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            cache_scope: private-amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            cache_scope: private-arm64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.REPOSITORY }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Determine VRX release tag
+        id: vrx_release
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ "${{ inputs.vrx_release_tag }}" = "latest" ]; then
+              TAG=$(gh release list --repo ${{ env.VRX_REPO }} --limit 1 --json tagName --jq '.[0].tagName')
+            else
+              TAG="${{ inputs.vrx_release_tag }}"
+            fi
+          else
+            TAG=$(gh release list --repo ${{ env.VRX_REPO }} --limit 1 --json tagName --jq '.[0].tagName')
+          fi
+          if [ -z "$TAG" ]; then
+            echo "Failed to determine VRX release tag" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
+
+      - name: Download VRX release from GitHub
+        run: |
+          mkdir -p vrx
+          gh release download ${{ steps.vrx_release.outputs.tag }} \
+            --repo ${{ env.VRX_REPO }} \
+            --pattern "dist.tar.gz" \
+            --output dist.tar.gz
+          tar -xzf dist.tar.gz -C vrx
+          rm dist.tar.gz
+        env:
+          GH_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
+
+      - name: Build and push platform image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.private
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}
+          outputs: type=image,name=fpvjp/app,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.cache_scope }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-private:
+    runs-on: ubuntu-latest
+    needs: build-private
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-private-*
+          merge-multiple: true
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.REPOSITORY }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        run: |
+          cd /tmp/digests
+          docker buildx imagetools create \
+            -t fpvjp/app:latest \
+            -t fpvjp/app:${{ github.sha }} \
+            $(printf 'fpvjp/app@sha256:%s ' *)
