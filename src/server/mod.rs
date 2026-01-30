@@ -12,6 +12,7 @@ use tracing::{error, info, warn};
 const SENDER_SESSION_ID: u32 = 100;
 const SENDER_RECEIVER_CLOSE: u32 = 108;
 const SENDER_ERROR: u32 = 109;
+const SENDER_PLATFORM_INFO: u32 = 110;
 const RECEIVER_SESSION_ID: u32 = 200;
 const RECEIVER_SENDER_LIST: u32 = 201;
 const RECEIVER_SENDER_CLOSE: u32 = 208;
@@ -47,6 +48,15 @@ struct Client {
     protocol: ClientType,
     last_active: Instant,
     sender: mpsc::UnboundedSender<String>,
+    platform: Option<String>,
+    gpu: Option<String>,
+}
+
+#[derive(serde::Serialize, Clone)]
+struct SenderInfo {
+    id: String,
+    platform: Option<String>,
+    gpu: Option<String>,
 }
 
 pub struct AppState {
@@ -67,12 +77,16 @@ pub fn new_shared_state(debug: bool, keep_alive: bool) -> SharedState {
     }))
 }
 
-fn get_senders(state: &AppState) -> Vec<String> {
+fn get_senders(state: &AppState) -> Vec<SenderInfo> {
     state
         .clients
         .values()
         .filter(|c| c.protocol == ClientType::Sender)
-        .map(|c| c.session_id.clone())
+        .map(|c| SenderInfo {
+            id: c.session_id.clone(),
+            platform: c.platform.clone(),
+            gpu: c.gpu.clone(),
+        })
         .collect()
 }
 
@@ -158,6 +172,8 @@ pub async fn handle_connection(
                 protocol,
                 last_active: Instant::now(),
                 sender: tx.clone(),
+                platform: None,
+                gpu: None,
             },
         );
 
@@ -241,6 +257,22 @@ async fn handle_message(
 
     if s.debug {
         info!("Incoming from {}: {}", protocol.as_str(), data);
+    }
+
+    // Handle SENDER_PLATFORM_INFO message
+    if let Some(msg_type) = data.get("type").and_then(|v| v.as_u64()) {
+        if msg_type == SENDER_PLATFORM_INFO as u64 && protocol == ClientType::Sender {
+            if let Some(client) = s.clients.get_mut(session_id) {
+                client.platform = data.get("platform").and_then(|v| v.as_str()).map(String::from);
+                client.gpu = data.get("gpu").and_then(|v| v.as_str()).map(String::from);
+                info!(
+                    "Platform info received from {}: platform={:?}, gpu={:?}",
+                    session_id, client.platform, client.gpu
+                );
+            }
+            notify_sender_list(&s);
+            return;
+        }
     }
 
     let target_protocol = get_target_protocol(protocol);
