@@ -1,6 +1,7 @@
-# ---------- Build stage ----------
-FROM rust:slim AS builder
-
+# ---------- Planner stage ----------
+FROM rust:slim AS chef
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+RUN cargo install cargo-chef
 RUN apt-get update && apt-get install -y musl-tools && rm -rf /var/lib/apt/lists/*
 
 ARG TARGETARCH
@@ -13,15 +14,27 @@ RUN case "$TARGETARCH" in \
 
 WORKDIR /build
 
+# ---------- Prepare recipe (dependency plan) ----------
+FROM chef AS planner
 COPY Cargo.toml Cargo.lock ./
 COPY src/ src/
+RUN cargo chef prepare --recipe-path recipe.json
 
+# ---------- Cache dependencies ----------
+FROM chef AS builder
+COPY --from=planner /build/recipe.json recipe.json
+RUN RUST_TARGET=$(cat /rust-target.txt) && \
+    cargo chef cook --release --target "$RUST_TARGET" --recipe-path recipe.json
+
+# ---------- Build application ----------
+COPY Cargo.toml Cargo.lock ./
+COPY src/ src/
 RUN RUST_TARGET=$(cat /rust-target.txt) && \
     cargo build --release --target "$RUST_TARGET" && \
     cp "target/$RUST_TARGET/release/fpvjp-app" /fpvjp-app
 
 # ---------- Runtime stage (distroless static) ----------
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian13
 
 WORKDIR /app
 
