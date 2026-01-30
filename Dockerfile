@@ -1,35 +1,36 @@
 # ---------- Build stage ----------
-FROM node:24-alpine AS builder
+FROM rust:slim AS builder
 
-RUN apk add --no-cache ca-certificates
+RUN apt-get update && apt-get install -y musl-tools && rm -rf /var/lib/apt/lists/*
+
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+      "amd64") RUST_TARGET="x86_64-unknown-linux-musl" ;; \
+      "arm64") RUST_TARGET="aarch64-unknown-linux-musl" ;; \
+    esac && \
+    echo "$RUST_TARGET" > /rust-target.txt && \
+    rustup target add "$RUST_TARGET"
+
+WORKDIR /build
+
+COPY Cargo.toml Cargo.lock ./
+COPY src/ src/
+
+RUN RUST_TARGET=$(cat /rust-target.txt) && \
+    cargo build --release --target "$RUST_TARGET" && \
+    cp "target/$RUST_TARGET/release/fpvjp-app" /fpvjp-app
+
+# ---------- Runtime stage (distroless static) ----------
+FROM gcr.io/distroless/static-debian12
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --omit=dev || npm install --production --no-audit --no-fund
-
-COPY server.js .
-COPY vrx/production ./vrx
-
-
-RUN npm cache clean --force || true
-
-# ---------- Runtime stage (distroless) ----------
-FROM gcr.io/distroless/nodejs24-debian13
-
-
-
-WORKDIR /app
-
-COPY --from=builder --chown=nonroot:nonroot /app /app
-
-ENV NODE_ENV=production \
-    TLS=false \
-    DEBUG=true \
-    KEEP_ALIVE=false \
-    PORT=80
+COPY --from=builder --chown=nonroot:nonroot /fpvjp-app /app/fpvjp-app
+COPY --chown=nonroot:nonroot vrx/production ./vrx
+COPY --chown=nonroot:nonroot certificate/ ./certificate/
 
 USER nonroot:nonroot
 
 EXPOSE 80
-CMD ["server.js"]
+ENTRYPOINT ["/app/fpvjp-app"]
+CMD ["--port", "80"]

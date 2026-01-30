@@ -8,11 +8,6 @@ on:
         required: true
         default: 'latest'
         type: string
-      # vtx_release_tag:
-      #   description: 'VTX Release tag (e.g., v1.0.4)'
-      #   required: true
-      #   default: 'latest'
-      #   type: string
 
 env:
   PROJECT_ID: fpv-japan
@@ -20,7 +15,6 @@ env:
   REPOSITORY: fpvjp
   IMAGE: app
   VRX_REPO: fpv-jp/vrx
-  # VTX_REPO: fpv-jp/vtx
 
 jobs:
   build-and-push-production:
@@ -121,26 +115,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
 
-      # - name: Determine VTX release tag
-      #   id: vtx_release
-      #   run: |
-      #     if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-      #       if [ "${{ inputs.vtx_release_tag }}" = "latest" ]; then
-      #         TAG=$(gh release list --repo ${{ env.VTX_REPO }} --limit 1 --json tagName --jq '.[0].tagName')
-      #       else
-      #         TAG="${{ inputs.vtx_release_tag }}"
-      #       fi
-      #     else
-      #       TAG=$(gh release list --repo ${{ env.VTX_REPO }} --limit 1 --json tagName --jq '.[0].tagName')
-      #     fi
-      #     if [ -z "$TAG" ]; then
-      #       echo "Failed to determine VTX release tag" >&2
-      #       exit 1
-      #     fi
-      #     echo "tag=$TAG" >> $GITHUB_OUTPUT
-      #   env:
-      #     GH_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
-
       - name: Download VRX release from GitHub
         run: |
           mkdir -p vrx
@@ -152,39 +126,6 @@ jobs:
           rm dist.tar.gz
         env:
           GH_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
-
-      # - name: Download VTX binaries from GitHub
-      #   run: |
-      #     gh release download ${{ steps.vtx_release.outputs.tag }} \
-      #       --repo ${{ env.VTX_REPO }} \
-      #       --pattern "vtx-rpi4-v4l2" \
-      #       --dir src
-      #     gh release download ${{ steps.vtx_release.outputs.tag }} \
-      #       --repo ${{ env.VTX_REPO }} \
-      #       --pattern "vtx-jetson-nano-2gb" \
-      #       --dir src
-      #     # gh release download ${{ steps.vtx_release.outputs.tag }} \
-      #     #   --repo ${{ env.VTX_REPO }} \
-      #     #   --pattern "vtx-jetson-orin-nano-super" \
-      #     #   --dir src
-      #     gh release download ${{ steps.vtx_release.outputs.tag }} \
-      #       --repo ${{ env.VTX_REPO }} \
-      #       --pattern "vtx-radxa-rock-5b" \
-      #       --dir src
-      #     # gh release download ${{ steps.vtx_release.outputs.tag }} \
-      #     #   --repo ${{ env.VTX_REPO }} \
-      #     #   --pattern "vtx-radxa-rock-5t" \
-      #     #   --dir src
-      #     # gh release download ${{ steps.vtx_release.outputs.tag }} \
-      #     #   --repo ${{ env.VTX_REPO }} \
-      #     #   --pattern "vtx-rpi4-libcam" \
-      #     #   --dir src
-      #     # gh release download ${{ steps.vtx_release.outputs.tag }} \
-      #     #   --repo ${{ env.VTX_REPO }} \
-      #     #   --pattern "vtx-rpi5-libcam" \
-      #     #   --dir src
-      #   env:
-      #     GH_TOKEN: ${{ secrets.APP_GITHUB_TOKEN }}
 
       - name: Build and push multi-platform image
         uses: docker/build-push-action@v5
