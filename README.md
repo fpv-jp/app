@@ -55,6 +55,15 @@ The signaling endpoint is available at:
 wss://fpv/signaling
 ```
 
+The VRX web application is served at the root path:
+
+```
+https://fpv/
+```
+
+For the VRX web application source code, see [vrx](https://github.com/fpv-jp/vrx).
+
+
 ## Development
 
 To build and run the signaling server locally without Docker:
