@@ -43,6 +43,13 @@ impl ClientType {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct AuthInfo {
+    pub sub: Option<String>,
+    pub email: Option<String>,
+    pub name: Option<String>,
+}
+
 struct Client {
     session_id: String,
     protocol: ClientType,
@@ -50,6 +57,7 @@ struct Client {
     sender: mpsc::UnboundedSender<String>,
     platform: Option<String>,
     gpu: Option<String>,
+    auth: AuthInfo,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -57,6 +65,12 @@ struct SenderInfo {
     id: String,
     platform: Option<String>,
     gpu: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sub: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
 }
 
 pub struct AppState {
@@ -77,30 +91,59 @@ pub fn new_shared_state(debug: bool, keep_alive: bool) -> SharedState {
     }))
 }
 
-fn get_senders(state: &AppState) -> Vec<SenderInfo> {
+fn get_senders(state: &AppState, filter_sub: Option<&str>) -> Vec<SenderInfo> {
     state
         .clients
         .values()
         .filter(|c| c.protocol == ClientType::Sender)
+        .filter(|c| match filter_sub {
+            Some(sub) => c.auth.sub.as_deref() == Some(sub),
+            None => true,
+        })
         .map(|c| SenderInfo {
             id: c.session_id.clone(),
             platform: c.platform.clone(),
             gpu: c.gpu.clone(),
+            sub: c.auth.sub.clone(),
+            email: c.auth.email.clone(),
+            name: c.auth.name.clone(),
         })
         .collect()
 }
 
-fn notify_sender_list(state: &AppState) {
-    let senders = get_senders(state);
-    let msg = json!({
-        "type": RECEIVER_SENDER_LIST,
-        "senders": senders,
-    })
-    .to_string();
+fn notify_sender_list(state: &AppState, changed_sub: Option<&str>) {
+    match changed_sub {
+        None => {
+            // No auth: broadcast all senders to all receivers
+            let senders = get_senders(state, None);
+            let msg = json!({
+                "type": RECEIVER_SENDER_LIST,
+                "senders": senders,
+            })
+            .to_string();
 
-    for client in state.clients.values() {
-        if client.protocol == ClientType::Receiver {
-            let _ = client.sender.send(msg.clone());
+            for client in state.clients.values() {
+                if client.protocol == ClientType::Receiver {
+                    let _ = client.sender.send(msg.clone());
+                }
+            }
+        }
+        Some(sub) => {
+            // Auth0: only notify receivers with matching sub
+            let senders = get_senders(state, Some(sub));
+            let msg = json!({
+                "type": RECEIVER_SENDER_LIST,
+                "senders": senders,
+            })
+            .to_string();
+
+            for client in state.clients.values() {
+                if client.protocol == ClientType::Receiver
+                    && client.auth.sub.as_deref() == Some(sub)
+                {
+                    let _ = client.sender.send(msg.clone());
+                }
+            }
         }
     }
 }
@@ -151,19 +194,32 @@ fn send_error(state: &AppState, session_id: &str, protocol: ClientType, message:
 pub async fn handle_connection(
     mut socket: WebSocket,
     protocol: ClientType,
+    auth: AuthInfo,
     state: SharedState,
 ) {
     let session_id = nanoid::nanoid!(8);
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
 
-    info!(
-        "Connected {} - sessionId: {}",
-        protocol.as_str(),
-        session_id
-    );
+    if auth.sub.is_some() || auth.email.is_some() || auth.name.is_some() {
+        info!(
+            "Connected {} - sessionId: {} sub: {:?} email: {:?} name: {:?}",
+            protocol.as_str(),
+            session_id,
+            auth.sub,
+            auth.email,
+            auth.name,
+        );
+    } else {
+        info!(
+            "Connected {} - sessionId: {}",
+            protocol.as_str(),
+            session_id
+        );
+    }
 
     // Register client and send initial messages
     {
+        let auth_sub = auth.sub.clone();
         let mut s = state.write().await;
         s.clients.insert(
             session_id.clone(),
@@ -174,12 +230,13 @@ pub async fn handle_connection(
                 sender: tx.clone(),
                 platform: None,
                 gpu: None,
+                auth,
             },
         );
 
         match protocol {
             ClientType::Sender => {
-                notify_sender_list(&s);
+                notify_sender_list(&s, auth_sub.as_deref());
                 let msg = json!({
                     "type": SENDER_SESSION_ID,
                     "sessionId": session_id,
@@ -188,7 +245,7 @@ pub async fn handle_connection(
                 let _ = tx.send(msg);
             }
             ClientType::Receiver => {
-                let senders = get_senders(&s);
+                let senders = get_senders(&s, auth_sub.as_deref());
                 let msg = json!({
                     "type": RECEIVER_SESSION_ID,
                     "sessionId": session_id,
@@ -262,15 +319,18 @@ async fn handle_message(
     // Handle SENDER_PLATFORM_INFO message
     if let Some(msg_type) = data.get("type").and_then(|v| v.as_u64()) {
         if msg_type == SENDER_PLATFORM_INFO as u64 && protocol == ClientType::Sender {
-            if let Some(client) = s.clients.get_mut(session_id) {
+            let changed_sub = if let Some(client) = s.clients.get_mut(session_id) {
                 client.platform = data.get("platform").and_then(|v| v.as_str()).map(String::from);
                 client.gpu = data.get("gpu").and_then(|v| v.as_str()).map(String::from);
                 info!(
                     "Platform info received from {}: platform={:?}, gpu={:?}",
                     session_id, client.platform, client.gpu
                 );
-            }
-            notify_sender_list(&s);
+                client.auth.sub.clone()
+            } else {
+                None
+            };
+            notify_sender_list(&s, changed_sub.as_deref());
             return;
         }
     }
@@ -324,10 +384,14 @@ async fn handle_disconnect(session_id: &str, protocol: ClientType, state: &Share
         s.pair_map.remove(&target_session_id);
     }
 
+    let changed_sub = s
+        .clients
+        .get(session_id)
+        .and_then(|c| c.auth.sub.clone());
     s.clients.remove(session_id);
 
     if protocol == ClientType::Sender {
-        notify_sender_list(&s);
+        notify_sender_list(&s, changed_sub.as_deref());
     }
 }
 

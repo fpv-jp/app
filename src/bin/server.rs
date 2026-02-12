@@ -10,7 +10,7 @@ use axum::{
 };
 use clap::Parser;
 use fpvjp_app::server::{
-    handle_connection, new_shared_state, spawn_inactive_cleanup, ClientType, SharedState,
+    handle_connection, new_shared_state, spawn_inactive_cleanup, AuthInfo, ClientType, SharedState,
 };
 use percent_encoding::percent_decode_str;
 use std::net::SocketAddr;
@@ -129,10 +129,16 @@ async fn ws_handler(
 
     let client_type = ClientType::from_protocol(protocol_header);
 
+    let auth = AuthInfo {
+        sub: headers.get("x-auth-sub").and_then(|v| v.to_str().ok()).map(String::from),
+        email: headers.get("x-auth-email").and_then(|v| v.to_str().ok()).map(String::from),
+        name: headers.get("x-auth-name").and_then(|v| v.to_str().ok()).map(String::from),
+    };
+
     match client_type {
         Some(ct) => ws
             .protocols([ct.as_str()])
-            .on_upgrade(move |socket| handle_connection(socket, ct, state)),
+            .on_upgrade(move |socket| handle_connection(socket, ct, auth, state)),
         None => ws.on_upgrade(|mut socket| async move {
             let _ = socket.send(axum::extract::ws::Message::Close(None)).await;
         }),
